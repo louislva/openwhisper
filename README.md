@@ -11,7 +11,7 @@ A tiny, open-source dictation app for macOS. Press a shortcut, talk, press it ag
 Requires macOS 13+ and the Xcode Command Line Tools (`xcode-select --install`).
 
 ```sh
-git clone https://github.com/<you>/openwhisper.git
+git clone https://github.com/louislva/openwhisper.git
 cd openwhisper
 ./scripts/install.sh
 ```
