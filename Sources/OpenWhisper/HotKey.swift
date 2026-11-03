@@ -1,21 +1,21 @@
 import AppKit
 import Carbon.HIToolbox
 
-/// A keyboard shortcut: a virtual key code plus modifier flags.
+/// A keyboard shortcut: either a key plus modifier flags, or a lone tap of one modifier key
+/// (e.g. Right ⌥), in which case `keyCode` is that modifier's key code and `modifiers` is 0.
 struct Shortcut: Codable, Equatable {
     var keyCode: UInt32
     var modifiers: UInt          // NSEvent.ModifierFlags raw value
-    var keyLabel: String         // e.g. "Space", "D", "F5"
+    var keyLabel: String         // e.g. "Space", "D", "F5", "Right ⌥"
 
-    static let `default` = Shortcut(
-        keyCode: UInt32(kVK_Space),
-        modifiers: NSEvent.ModifierFlags([.control, .option]).rawValue,
-        keyLabel: "Space"
-    )
+    static let `default` = Shortcut(keyCode: UInt32(kVK_RightOption), modifiers: 0, keyLabel: "Right ⌥")
 
     var flags: NSEvent.ModifierFlags { NSEvent.ModifierFlags(rawValue: modifiers) }
 
+    var isModifierTap: Bool { ModifierTapHotKey.keys[Int(keyCode)] != nil }
+
     var displayString: String {
+        if isModifierTap { return keyLabel }
         var s = ""
         if flags.contains(.control) { s += "⌃" }
         if flags.contains(.option) { s += "⌥" }
@@ -46,6 +46,12 @@ struct Shortcut: Codable, Equatable {
             return .failure(.optionShiftOnly)
         }
         return .success(Shortcut(keyCode: UInt32(event.keyCode), modifiers: mods.rawValue, keyLabel: label))
+    }
+
+    /// A shortcut for tapping a single modifier key, if `keyCode` is one.
+    static func modifierTap(keyCode: UInt16) -> Shortcut? {
+        guard let key = ModifierTapHotKey.keys[Int(keyCode)] else { return nil }
+        return Shortcut(keyCode: UInt32(keyCode), modifiers: 0, keyLabel: key.label)
     }
 
     private static let functionKeyCodes: Set<Int> = [
@@ -119,5 +125,79 @@ final class HotKey {
             HotKey.handlers[hotKeyID.id]?()
             return noErr
         }, 1, &spec, nil, nil)
+    }
+}
+
+/// Fires when a single modifier key (e.g. Right ⌥) is tapped on its own: pressed and released
+/// quickly with no other key, modifier or click in between. Holding it to type ⌥-characters
+/// or ⌥-click doesn't trigger. Uses global event monitors, which need Accessibility access.
+final class ModifierTapHotKey {
+    /// Modifier key codes, with the device-specific flag bit that tells left from right.
+    static let keys: [Int: (label: String, mask: UInt)] = [
+        kVK_RightOption: ("Right ⌥", 0x40), kVK_Option: ("Left ⌥", 0x20),
+        kVK_RightCommand: ("Right ⌘", 0x10), kVK_Command: ("Left ⌘", 0x08),
+        kVK_RightControl: ("Right ⌃", 0x2000), kVK_Control: ("Left ⌃", 0x01),
+        kVK_RightShift: ("Right ⇧", 0x04), kVK_Shift: ("Left ⇧", 0x02),
+        kVK_Function: ("fn", NSEvent.ModifierFlags.function.rawValue),
+    ]
+    private static let maxTapDuration: TimeInterval = 0.5
+
+    private let keyCode: UInt16
+    private let mask: UInt
+    private let handler: () -> Void
+    private var monitors: [Any] = []
+    private var pressedAt: Date?
+    private var interrupted = false
+
+    init?(keyCode: UInt32, handler: @escaping () -> Void) {
+        guard let key = Self.keys[Int(keyCode)] else { return nil }
+        self.keyCode = UInt16(keyCode)
+        self.mask = key.mask
+        self.handler = handler
+        let events: NSEvent.EventTypeMask = [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { [weak self] in self?.handle($0) }) {
+            monitors.append(global)
+        }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: events, handler: { [weak self] in self?.handle($0); return $0 }) {
+            monitors.append(local)
+        }
+    }
+
+    deinit {
+        monitors.forEach(NSEvent.removeMonitor)
+    }
+
+    private func handle(_ event: NSEvent) {
+        guard event.type == .flagsChanged else {
+            if pressedAt != nil { interrupted = true }
+            return
+        }
+        guard event.keyCode == keyCode else {
+            if pressedAt != nil { interrupted = true }
+            return
+        }
+        let isDown = event.modifierFlags.rawValue & mask != 0
+        if isDown {
+            pressedAt = Date()
+            // Other modifiers already held means it's part of a combo, not a lone tap.
+            let others = event.modifierFlags.intersection([.control, .option, .shift, .command, .function])
+                .subtracting(Self.familyFlag(for: keyCode))
+            interrupted = !others.isEmpty
+        } else if let pressedAt {
+            if !interrupted && Date().timeIntervalSince(pressedAt) < Self.maxTapDuration {
+                handler()
+            }
+            self.pressedAt = nil
+        }
+    }
+
+    private static func familyFlag(for keyCode: UInt16) -> NSEvent.ModifierFlags {
+        switch Int(keyCode) {
+        case kVK_RightOption, kVK_Option: return .option
+        case kVK_RightCommand, kVK_Command: return .command
+        case kVK_RightControl, kVK_Control: return .control
+        case kVK_RightShift, kVK_Shift: return .shift
+        default: return .function
+        }
     }
 }

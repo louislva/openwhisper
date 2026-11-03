@@ -103,8 +103,8 @@ private struct ShortcutRecorder: View {
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
             Button(action: toggle) {
-                Text(isRecording ? "Press shortcut…" : shortcut.displayString)
-                    .frame(minWidth: 110)
+                Text(isRecording ? "Press keys or tap a modifier…" : shortcut.displayString)
+                    .frame(minWidth: 180)
             }
             if let hint {
                 Text(hint).font(.caption).foregroundStyle(.red)
@@ -121,7 +121,26 @@ private struct ShortcutRecorder: View {
         isRecording = true
         hint = nil
         AppDelegate.shared?.suspendHotKey()
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        var pendingModifier: UInt16?
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+            if event.type == .flagsChanged {
+                // A modifier pressed and released on its own records a modifier-tap shortcut.
+                guard let tap = Shortcut.modifierTap(keyCode: event.keyCode),
+                      let mask = ModifierTapHotKey.keys[Int(event.keyCode)]?.mask else { return event }
+                let isDown = event.modifierFlags.rawValue & mask != 0
+                let anyHeld = !event.modifierFlags.intersection([.control, .option, .shift, .command, .function]).isEmpty
+                if isDown {
+                    // A second modifier going down means it's a combo, not a lone tap.
+                    pendingModifier = pendingModifier == nil ? event.keyCode : nil
+                } else if pendingModifier == event.keyCode && !anyHeld {
+                    shortcut = tap
+                    stop()
+                } else {
+                    pendingModifier = nil
+                }
+                return event
+            }
+            pendingModifier = nil
             if event.keyCode == 53 && event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
                 stop() // plain Esc cancels
                 return nil

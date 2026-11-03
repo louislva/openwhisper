@@ -19,8 +19,8 @@ cd openwhisper
 This builds the app, installs it to `/Applications`, launches it, and registers it as a login item. On first launch:
 
 1. Paste your [OpenAI API key](https://platform.openai.com/api-keys) into Settings.
-2. Press **⌃⌥Space**, allow microphone access, and speak.
-3. Press **⌃⌥Space** again. When asked, allow **Accessibility** — that's what lets OpenWhisper press ⌘V for you.
+2. Allow **Accessibility** when asked — it lets OpenWhisper see the Right ⌥ tap and press ⌘V for you.
+3. Tap **Right ⌥**, allow microphone access, and speak. Tap **Right ⌥** again to transcribe and paste.
 
 Re-run `./scripts/install.sh` any time to update.
 
@@ -28,19 +28,19 @@ Re-run `./scripts/install.sh` any time to update.
 
 | | |
 |---|---|
-| **⌃⌥Space** (configurable) | Start recording / stop and transcribe |
+| **Right ⌥** tap (configurable) | Start recording / stop and transcribe |
 | **Esc** | Cancel while recording or transcribing |
 | Menu-bar waveform | Start dictation, Settings, Quit |
 
 The transcript is always left on your clipboard, so if it didn't paste where you wanted, just ⌘V.
 
-Settings: API key, shortcut, model (`gpt-transcribe` by default; also `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `whisper-1`), and launch at login.
+Settings: API key, shortcut (a key combo like ⌃⌥Space, or a lone modifier tap like Right ⌥ / Right ⌘ / fn), model (`gpt-transcribe` by default; also `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `whisper-1`), and launch at login.
 
 ## How it works
 
 | File | |
 |---|---|
-| `HotKey.swift` | Global shortcut via Carbon `RegisterEventHotKey` |
+| `HotKey.swift` | Key combos via Carbon `RegisterEventHotKey`; lone modifier taps via global event monitors |
 | `Recorder.swift` | `AVAudioRecorder` → 16 kHz mono AAC, with level metering |
 | `Transcriber.swift` | One multipart `POST /v1/audio/transcriptions` |
 | `Paster.swift` | Clipboard + synthesized ⌘V |

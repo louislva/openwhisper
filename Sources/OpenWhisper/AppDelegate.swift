@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var toggleItem: NSMenuItem!
     private var state = State.idle { didSet { updateMenu() } }
     private var hotKey: HotKey?
+    private var modifierTapKey: ModifierTapHotKey?
+    private var accessibilityPoll: Timer?
     private var escapeKey: HotKey?
     private var meterTimer: Timer?
     private var transcription: Task<Void, Never>?
@@ -35,13 +37,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func registerHotKey() {
         hotKey = nil
-        hotKey = HotKey(settings.shortcut) { [weak self] in self?.toggle() }
-        if hotKey == nil { NSLog("OpenWhisper: could not register \(settings.shortcut.displayString)") }
+        modifierTapKey = nil
+        let shortcut = settings.shortcut
+        if shortcut.isModifierTap {
+            modifierTapKey = ModifierTapHotKey(keyCode: shortcut.keyCode) { [weak self] in self?.toggle() }
+            if !AXIsProcessTrusted() { rearmWhenAccessibilityGranted() }
+        } else {
+            hotKey = HotKey(shortcut) { [weak self] in self?.toggle() }
+            if hotKey == nil { NSLog("OpenWhisper: could not register \(shortcut.displayString)") }
+        }
         updateMenu()
     }
 
-    func suspendHotKey() { hotKey = nil }
-    func resumeHotKey() { if hotKey == nil { registerHotKey() } }
+    /// Global key monitors only see events once Accessibility is granted, so re-register then.
+    private func rearmWhenAccessibilityGranted() {
+        Paster.requestAccessibility()
+        accessibilityPoll?.invalidate()
+        accessibilityPoll = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard AXIsProcessTrusted() else { return }
+                timer.invalidate()
+                self?.registerHotKey()
+            }
+        }
+    }
+
+    func suspendHotKey() {
+        hotKey = nil
+        modifierTapKey = nil
+    }
+
+    func resumeHotKey() {
+        if hotKey == nil && modifierTapKey == nil { registerHotKey() }
+    }
 
     // MARK: Dictation flow
 

@@ -88,7 +88,7 @@ cat <<EOF
 ✓ OpenWhisper is installed and running (look for the waveform in your menu bar).
 
   1. Paste your OpenAI API key into Settings (opens automatically the first time).
-  2. Press ⌃⌥Space (or your own shortcut) to dictate, press again to transcribe & paste.
+  2. Tap Right ⌥ (or your own shortcut) to dictate, tap again to transcribe & paste.
   3. Allow Microphone and Accessibility when macOS asks — Accessibility is what lets
      OpenWhisper press ⌘V for you.
 
